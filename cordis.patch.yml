@@ -1,0 +1,33 @@
+# dsh-mcp-lazy bundle patch.
+#
+# One host row, no tools of its own. It takes over an MCP server that would
+# otherwise mount at profile boot: the owning preset's `mcp-<name>` row must be
+# disabled, and this row names the same config so it can mount the client later.
+#
+# Why the row cannot simply stay in the preset: `dsh-agent-preset-registry`
+# eagerly creates a Loader tree for every declaration at boot, and
+# `dsh-mcp-client.apply()` awaits its connection immediately — so a mounted MCP
+# row spawns its server before any session exists. Measured: all four servers
+# started within 3 s of `dsh web`, while the live session used none of them.
+#
+# `idleMs` is a real grace period: release happens only after no tool call, no
+# running turn and no status change for this long.
+- insert:
+    - id: mcp-lazy
+      name: 'dsh-mcp-lazy'
+      config:
+        idleMs: 600000      # 10 minutes of true inactivity before release
+        sweepMs: 60000      # how often the idle check runs
+        servers:
+          # GenOffice is a full GUI application, so it is the one worth not
+          # launching unasked. It was chosen first because `office` has never
+          # been used in any recorded session, so the risk of disrupting live
+          # work is nil. Its tools are the 32 `mcp__genoffice__*` names.
+          - serverName: genoffice
+            transport: stdio
+            command: /Users/jackson/.local/bin/genoffice
+            args:
+              - mcp
+            toolCallTimeoutMs: 180000
+            failOnStartupError: false
+            maxInstructionBytes: 4096

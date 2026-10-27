@@ -1,0 +1,19 @@
+{
+  "name": "dsh-mcp-lazy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Start an MCP server when a session first needs it and release it after a real idle period, instead of mounting every preset's servers at profile boot.",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "keywords": ["dsh", "dsh-plugin", "mcp", "lazy", "memory"],
+  "engines": { "node": ">=22" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "compatibility": { "dshReleases": { "0.2.1-rc.4": "compatible" }, "node": ">=22" }
+  },
+  "license": "MIT"
+}
