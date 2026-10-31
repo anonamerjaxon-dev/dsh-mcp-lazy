@@ -42,10 +42,11 @@
  * It does not make the *tools* appear mid-session for free. When the server opens,
  * its tools register and the request's tool array changes — that is one cache
  * break (measured ~10k tokens on this machine, once per open). The saving is
- * idle RAM and stray processes, which measured ~35 MB total for all four servers,
- * i.e. about 2.7% of this process's 1.27 GB footprint. This plugin is worth it for
- * tidiness and for not launching a GUI app (GenOffice) unasked — not for a large
- * memory win. Saying otherwise would be overselling it.
+ * idle RAM and stray processes, measured at ~250 MB for five idle servers on
+ * 2026-10-31 (GenOffice alone ~157 MB). An earlier comment said ~35 MB; that was
+ * wrong. This plugin is worth it for tidiness and for not launching a GUI app
+ * (GenOffice) unasked — not for a large memory win. Saying otherwise would be
+ * overselling it.
  */
 
 import { createRequire } from 'node:module'
@@ -141,6 +142,42 @@ export function createServerController(spec, now = () => Date.now()) {
   }
 }
 
+/**
+ * Track which agents are running, keyed by agent id.
+ *
+ * The `agent/status` payload DOES carry `agent`: dsh-agent's `agentEvents()`
+ * fuses `{ ...payload, agent }` into every agent-scoped emit (verified in
+ * dsh-agent/lib/index.js, `agentEvents`). An earlier version assumed it did
+ * not and tracked a single `'any'` marker, so with a parent turn and a subagent
+ * running together, the subagent going idle cleared the marker and armed an
+ * MCP release in the middle of the parent's turn.
+ *
+ * `noteRunning`/`noteIdle` are called only on the 0↔1 edges because the
+ * controller keeps a counter, not a boolean.
+ */
+export function createActivityTracker(controllers) {
+  const running = new Set()
+  const each = (fn) => { for (const c of controllers.values()) fn(c) }
+  const idOf = (agent) => (typeof agent?.id === 'string' && agent.id !== '' ? agent.id : 'any')
+  return {
+    get size() { return running.size },
+    running(agent) {
+      const wasEmpty = running.size === 0
+      running.add(idOf(agent))
+      if (wasEmpty) each((c) => c.noteRunning())
+      each((c) => c.touch())
+    },
+    idle(agent) {
+      if (!running.delete(idOf(agent))) return
+      if (running.size === 0) each((c) => c.noteIdle())
+    },
+    drop(agent) {
+      if (!running.delete(idOf(agent))) return
+      if (running.size === 0) each((c) => c.noteIdle())
+    },
+  }
+}
+
 export function apply(ctx, config = {}) {
   const log = (level, message) => ctx.logger?.[level]?.(`mcp-lazy: ${message}`)
   const servers = config.servers ?? []
@@ -153,7 +190,7 @@ export function apply(ctx, config = {}) {
   }
 
   const controllers = new Map()
-  const running = new Set()
+  const activity = createActivityTracker(controllers)
 
   const controllerFor = (serverName) => {
     const spec = servers.find((s) => s.serverName === serverName)
@@ -200,23 +237,18 @@ export function apply(ctx, config = {}) {
     await openAll('first message')
   })
 
-  ctx.on('agent/disposed', () => {
+  ctx.on('agent/disposed', ({ agent }) => {
+    activity.drop(agent)
     for (const ctrl of controllers.values()) ctrl.dropSession()
   })
 
   // ── activity: a turn starting or ending, and any tool call ─────────────
-  // `agent/status` carries only `{ status }` (no agent id), so the safe reading
-  // is "some agent changed state": a `running` transition touches activity, and
-  // an `idle` transition is what allows release. Conflating a slow step with
-  // idleness is the failure this avoids.
-  ctx.on('agent/status', ({ status }) => {
-    if (status === 'running') {
-      if (running.size === 0) for (const c of controllers.values()) c.noteRunning()
-      running.add('any')
-      for (const c of controllers.values()) c.touch()
-    } else {
-      if (running.delete('any')) for (const c of controllers.values()) c.noteIdle()
-    }
+  // Keyed by agent id, so one subagent finishing cannot make a still-running
+  // parent look idle. A `running` transition touches activity; only the LAST
+  // idle transition re-arms the release clock.
+  ctx.on('agent/status', ({ agent, status }) => {
+    if (status === 'running') activity.running(agent)
+    else activity.idle(agent)
   })
 
   // Tools changing means a turn is doing work; cheap and accurate as a freshness

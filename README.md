@@ -38,10 +38,11 @@ Releasing too early is the failure that hurts, so:
 
 ## Cost, stated honestly
 
-The saving is **idle RAM and stray processes** — measured ~35 MB across all four
-servers, about **2.7%** of this DSH process's 1.27 GB footprint. It is **not** a
-token saving: MCP tools are already per-preset, so a `standard` session never paid
-for them.
+The saving is **idle RAM and stray processes** — re-measured 2026-10-31 with
+five idle servers: **~250 MB RSS total** (GenOffice ~157 MB, playwright ~39 MB,
+the REA shim ~30 MB, blender ~20 MB, figcraft ~2 MB). The earlier "~35 MB" figure
+was wrong. It is **not** a token saving: MCP tools are already per-preset, so a
+`standard` session never paid for them.
 
 There is one real token cost: when the server opens mid-session its tools register
 and the request's tool array changes — one cache break, measured ~10k tokens,

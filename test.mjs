@@ -175,5 +175,51 @@ check('the plugin names itself and needs no injected service', () => {
   assert.deepEqual(M.inject, [])
 })
 
+console.log('\nactivity: concurrent agents')
+{
+  const calls = []
+  const controllers = new Map([
+    ['demo', { noteRunning: () => calls.push('running'), noteIdle: () => calls.push('idle'), touch: () => calls.push('touch') }],
+  ])
+  const activity = M.createActivityTracker(controllers)
+  activity.running({ id: 'parent' })
+  check('the first running agent arms the controller once', () => {
+    assert.deepEqual(calls.filter((c) => c === 'running'), ['running'])
+  })
+  calls.length = 0
+  activity.running({ id: 'sub' })
+  check('a second running agent never double-arms the counter', () => {
+    assert.deepEqual(calls.filter((c) => c === 'running'), [])
+  })
+  calls.length = 0
+  activity.idle({ id: 'sub' })
+  check('a subagent going idle does NOT release while the parent runs', () => {
+    assert.deepEqual(calls.filter((c) => c === 'idle'), [], 'the parent is still running')
+    assert.equal(activity.size, 1)
+  })
+  activity.idle({ id: 'parent' })
+  check('the last idle edge releases exactly once', () => {
+    assert.deepEqual(calls.filter((c) => c === 'idle'), ['idle'])
+    assert.equal(activity.size, 0)
+  })
+}
+{
+  const calls = []
+  const controllers = new Map([
+    ['demo', { noteRunning: () => calls.push('running'), noteIdle: () => calls.push('idle'), touch: () => {} }],
+  ])
+  const activity = M.createActivityTracker(controllers)
+  activity.running({ id: 'a' })
+  activity.drop({ id: 'a' })
+  check('a disposed agent stops counting as running', () => {
+    assert.equal(activity.size, 0)
+    assert.deepEqual(calls, ['running', 'idle'])
+  })
+  check('an unknown idle edge is ignored, not counted twice', () => {
+    activity.idle({ id: 'never-ran' })
+    assert.deepEqual(calls, ['running', 'idle'])
+  })
+}
+
 console.log(`\n${passed} checks passed\n`)
 process.exit(process.exitCode ?? 0)
