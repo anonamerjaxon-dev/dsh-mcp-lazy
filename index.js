@@ -70,6 +70,41 @@ export function resolveMcpClient(specifier = 'dsh-mcp-client', hostPkg = HOST_PK
 }
 
 /**
+ * The preset an agent is running, straight from the registry that owns the
+ * answer. `undefined` when the registry is absent (a preset-free boot) or the
+ * call throws — both mean "we cannot prove this session may use the server".
+ *
+ * @param ctx   Host context; only `agentPresets` is read.
+ * @param agent The agent whose composition is being asked about.
+ */
+export function presetOf(ctx, agent) {
+  try {
+    const preset = ctx?.agentPresets?.composedPreset?.(agent?.ctx)
+    return typeof preset === 'string' ? preset : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Whether a server spec permits opening for a given preset.
+ *
+ * `allowPresets` omitted or empty means "any preset" — the pre-2026-11-04
+ * behaviour, kept for a server that genuinely belongs everywhere. When the list
+ * IS given, an unresolvable preset (`undefined`) is treated as NOT allowed: the
+ * whole point is to avoid launching a heavy server for a session that cannot
+ * use it, so the safe direction is to stay shut.
+ *
+ * @param spec   { allowPresets?: string[] }
+ * @param preset Preset id, or undefined when unknown.
+ */
+export function specMayOpen(spec, preset) {
+  const allow = spec?.allowPresets
+  if (!Array.isArray(allow) || allow.length === 0) return true
+  return typeof preset === 'string' && allow.includes(preset)
+}
+
+/**
  * Track one server's lifecycle. Pure enough to unit-test: no timers of its own,
  * every decision is a function of the observed state.
  *
@@ -219,10 +254,24 @@ export function apply(ctx, config = {}) {
     return ctrl
   }
 
-  const openAll = async (why) => {
+  // ── who may open a server ──────────────────────────────────────────────
+  // Opening on EVERY session's first message defeats the point. Observed
+  // 2026-11-04: a `standard` session — whose preset exposes 0 MCP servers and
+  // no genoffice tool at all — started GenOffice, a ~150 MB GUI app, because the
+  // trigger only asked "did a session start?", never "can this session use it?".
+  // That is the same cost this plugin exists to remove, just moved from boot to
+  // the first message.
+  //
+  // `ctx.agentPresets.composedPreset(agent.ctx)` is the registry's own answer to
+  // "which preset is this agent running", the same call `dsh-preset-tool-gate`
+  // makes before restricting tools.
+  const openFor = async (agent, why) => {
+    const preset = presetOf(ctx, agent)
     for (const spec of servers) {
+      if (!specMayOpen(spec, preset)) continue
       const ctrl = controllerFor(spec.serverName)
       if (ctrl.isOpen) continue
+      ctrl.noteSession()
       const result = await ctrl.open()
       if (!result.ok) log('warn', `could not open ${spec.serverName} on ${why}: ${result.reason}`)
     }
@@ -231,10 +280,22 @@ export function apply(ctx, config = {}) {
   // ── trigger: the session's first message ───────────────────────────────
   // `agent/created` is serial and awaited and fires before the loop releases
   // queued input, so the server is up before that first request is assembled.
+  // The preset is already bound by then: the session controller mounts it in the
+  // Agent's setup callback, which runs before announce() emits this event.
   ctx.on('agent/created', async ({ agent }) => {
     if (typeof agent?.id !== 'string') return
-    for (const spec of servers) controllerFor(spec.serverName)?.noteSession()
-    await openAll('first message')
+    await openFor(agent, 'first message')
+  })
+
+  // A blank session may change preset before its first turn — `standard` to
+  // `office` is the ordinary way in. Without this, that session would reach the
+  // turn with the server still shut, because the gate correctly said "no" to
+  // `standard` a moment earlier. Opening here costs nothing for the presets that
+  // do not match: `openFor` re-reads the CURRENT preset each time.
+  ctx.on('agent-preset/selected', async (sessionId) => {
+    const agent = ctx.agents?.get?.(sessionId)
+    if (agent === undefined) return
+    await openFor(agent, 'preset selected')
   })
 
   ctx.on('agent/disposed', ({ agent }) => {

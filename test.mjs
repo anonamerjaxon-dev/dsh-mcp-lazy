@@ -175,6 +175,50 @@ check('the plugin names itself and needs no injected service', () => {
   assert.deepEqual(M.inject, [])
 })
 
+console.log('\npreset gate: which sessions may open a server')
+{
+  // `presetOf` must read the registry's own answer and never trust anything else.
+  const agent = { ctx: { id: 'agent-1' } }
+  check('the preset comes from the registry, keyed by the agent context', () => {
+    const ctx = { agentPresets: { composedPreset: (a) => (a === agent.ctx ? 'office' : 'wrong') } }
+    assert.equal(M.presetOf(ctx, agent), 'office')
+  })
+  check('a preset-free boot reports undefined instead of inventing a name', () => {
+    assert.equal(M.presetOf({}, agent), undefined)
+  })
+  check('a throwing registry is undefined, not an exception at agent creation', () => {
+    const ctx = { agentPresets: { composedPreset() { throw new Error('boom') } } }
+    assert.equal(M.presetOf(ctx, agent), undefined)
+  })
+  check('a non-string composition result is undefined', () => {
+    const ctx = { agentPresets: { composedPreset: () => ({ id: 'office' }) } }
+    assert.equal(M.presetOf(ctx, agent), undefined)
+  })
+
+  // The decision itself. This is the bug from 2026-11-04: a `standard` session
+  // opened the `office`-only server because nothing asked this question.
+  const officeOnly = { serverName: 'genoffice', allowPresets: ['office'] }
+  check('a listed preset may open the server', () => {
+    assert.equal(M.specMayOpen(officeOnly, 'office'), true)
+  })
+  check('an unlisted preset may not — this is the regression', () => {
+    assert.equal(M.specMayOpen(officeOnly, 'standard'), false)
+  })
+  check('an unknown preset stays shut, the safe direction', () => {
+    assert.equal(M.specMayOpen(officeOnly, undefined), false)
+  })
+  check('no allowPresets means every preset, the old behaviour', () => {
+    assert.equal(M.specMayOpen({ serverName: 'global' }, 'standard'), true)
+    assert.equal(M.specMayOpen({ serverName: 'global' }, undefined), true)
+  })
+  check('an empty allowPresets list means every preset, not none', () => {
+    assert.equal(M.specMayOpen({ serverName: 'x', allowPresets: [] }, 'minimal'), true)
+  })
+  check('a malformed allowPresets is ignored rather than crashing', () => {
+    assert.equal(M.specMayOpen({ serverName: 'x', allowPresets: 'office' }, 'minimal'), true)
+  })
+}
+
 console.log('\nactivity: concurrent agents')
 {
   const calls = []

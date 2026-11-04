@@ -20,10 +20,17 @@
         sweepMs: 60000      # how often the idle check runs
         servers:
           # GenOffice is a full GUI application, so it is the one worth not
-          # launching unasked. It was chosen first because `office` has never
-          # been used in any recorded session, so the risk of disrupting live
-          # work is nil. Its tools are the 32 `mcp__genoffice__*` names.
+          # launching unasked. Its tools are the 32 `mcp__genoffice__*` names.
+          #
+          # `allowPresets` was added 2026-11-04 after a measured regression: the
+          # trigger fired on ANY session's first message, so a `standard` session
+          # — whose preset exposes 0 MCP servers and no genoffice tool — launched
+          # this ~150 MB GUI app and left it running. Same waste the plugin exists
+          # to remove, just deferred to the first message. Only the presets that
+          # actually compile this server in may open it.
           - serverName: genoffice
+            allowPresets:
+              - office
             transport: stdio
             command: /Users/jackson/.local/bin/genoffice
             args:

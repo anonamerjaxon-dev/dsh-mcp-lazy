@@ -62,6 +62,7 @@ for a big memory win. Saying otherwise would oversell it.
         sweepMs: 60000      # how often the idle check runs
         servers:
           - serverName: genoffice
+            allowPresets: [office]   # only these presets may trigger it
             transport: stdio
             command: /Users/jackson/.local/bin/genoffice
             args: [mcp]
@@ -69,6 +70,26 @@ for a big memory win. Saying otherwise would oversell it.
             failOnStartupError: false
             maxInstructionBytes: 4096
 ```
+
+### `allowPresets` — which sessions may open a server
+
+Omitted means **every preset may open it** (the original behaviour). A list
+restricts opening to those presets, read from the registry with
+`ctx.agentPresets.composedPreset(agent.ctx)` — the same call
+`dsh-preset-tool-gate` makes.
+
+Set it whenever a server belongs to specific presets. Without it the trigger
+fires on *any* session's first message, which is the waste this plugin exists to
+remove, merely postponed. Measured 2026-11-04: a `standard` session — whose
+preset compiles in zero MCP servers and no `mcp__genoffice__*` tool — launched
+GenOffice (a ~150 MB GUI application) and kept it running.
+
+Two details worth knowing:
+
+- An **unresolvable** preset (no registry, or a throwing lookup) counts as *not
+  allowed* when a list is given. Staying shut is the safe direction.
+- A blank session can change preset **after** creation, so switching `standard`
+  → `office` re-evaluates and opens on the `agent-preset/selected` event.
 
 **Then disable the preset's own row for that server.** Two owners of one
 `serverName` start the server twice (the duplicate-row trap).
@@ -79,12 +100,15 @@ the lazy-owned server is currently up or down.
 ## Tests
 
 ```
-node test.mjs     # 22 offline checks, no server and no model call
+node test.mjs     # 38 offline checks, no server and no model call
 ```
 
 The timing rules are testable because `createServerController` takes an injected
 clock and owns no timers: grace period, "never while running", touch restarts the
-timer, reopen after release, and a failed open leaving the server closed.
+timer, reopen after release, and a failed open leaving the server closed. The
+preset gate is tested the same way — `presetOf` and `specMayOpen` are pure, so the
+"a `standard` session must not open an `office` server" rule is a unit test rather
+than a live experiment.
 
 Two bugs these tests caught during development:
 
