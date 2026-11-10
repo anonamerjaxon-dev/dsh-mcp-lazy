@@ -1,0 +1,32 @@
+name: check
+
+# No `npm ci`: this package has zero dependencies and no lockfile, so the gate
+# is exactly the three commands a contributor runs locally.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Audit the package (paths, secrets, manifest, patch)
+        run: npm run audit
+
+      - name: Unit tests (idle release, preset gate, activity tracking)
+        run: npm test
+
+      - name: Pack and load from a profile node_modules
+        run: npm run smoke

@@ -1,3 +1,8 @@
 node_modules/
 *.log
 .DS_Store
+
+# Build output. `agensi/dist/` holds the packaged skill zip that
+# `npm run agensi:build` regenerates on demand; the source it packs
+# (`agensi/lazy-mcp-loading/SKILL.md`) and the builder stay tracked.
+agensi/dist/

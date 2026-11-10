@@ -1,5 +1,5 @@
 /**
- * dsh-mcp-lazy — start an MCP server when a session first needs it, and release
+ * dsh-lazy-mcp — start an MCP server when a session first needs it, and release
  * it once nothing is using it, instead of paying for it from profile boot.
  *
  * ── Why this exists ──────────────────────────────────────────────────────
@@ -50,23 +50,69 @@
  */
 
 import { createRequire } from 'node:module'
-import { execPath } from 'node:process'
+import path from 'node:path'
+import { argv, execPath } from 'node:process'
 
 export const name = 'mcp-lazy'
 
 /** Nothing beyond events: the MCP client brings its own `tools` inject. */
 export const inject = []
 
-const HOST_PKG = '/Users/jackson/.nvm/versions/node/v22.21.1/lib/node_modules/@deepseek-ai/dsh/package.json'
+/**
+ * Every place the DSH installation's `package.json` could be, most specific
+ * first. All of them are derived at runtime — **no absolute path belongs in
+ * this file**.
+ *
+ * Why this exists: the plugin is loaded from the *profile*, whose node_modules
+ * holds no `@deepseek-ai/*` packages, so `import('@deepseek-ai/dsh-mcp-client')`
+ * there fails with ERR_MODULE_NOT_FOUND. The host's copy has to be found by
+ * path. An earlier version hard-coded `/Users/<name>/.nvm/...`, which resolved
+ * on exactly one machine and nowhere else — fine while the only install was a
+ * `link:` to this checkout, fatal the moment anyone installs the package.
+ */
+export function hostPkgCandidates() {
+  // 1. Explicit override, for tests and unusual layouts. When it is set it is
+  //    the ONLY candidate: a wrong value must fail loudly rather than quietly
+  //    resolve somewhere else, or the override lies about what it did.
+  if (process.env.DSH_HOST_PKG) return [process.env.DSH_HOST_PKG]
+  const out = []
+  // 2. Inside DSH: argv[1] is the host's own bin, so Node walks up from it and
+  //    lands in `<dsh>/node_modules/@deepseek-ai/...`.
+  if (argv[1]) out.push(path.resolve(argv[1]))
+  // 3. Beside the running node binary: `<node>/lib/node_modules/@deepseek-ai/dsh`.
+  //    Covers a global install when the entry script is not the host bin
+  //    (a test runner, an ACP host, a wrapper). A plain path join, not a
+  //    resolve: a missing layout must yield a candidate that fails later, never
+  //    a throw from inside the list builder.
+  out.push(path.join(path.dirname(execPath), '..', 'lib', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'))
+  return out
+}
 
 /**
- * Resolve `dsh-mcp-client` from the DSH installation, not the profile: the
- * profile does not depend on host packages and `import` there fails with
- * ERR_MODULE_NOT_FOUND.
+ * Resolve a host package by path, from the DSH installation rather than the
+ * profile.
+ *
+ * @param specifier  Short name, e.g. `mcp-client` for `@deepseek-ai/dsh-mcp-client`.
+ * @param hostPkg    Optional single candidate, honoured first (tests pin this).
+ * @throws When no candidate resolves, naming every one that was tried — a
+ *         silent fallback is what made the original bug invisible.
  */
-export function resolveMcpClient(specifier = 'dsh-mcp-client', hostPkg = HOST_PKG) {
-  const require = createRequire(hostPkg)
-  return require.resolve(`@deepseek-ai/${specifier}`)
+export function resolveMcpClient(specifier = 'dsh-mcp-client', hostPkg) {
+  const tried = []
+  const candidates = hostPkg ? [hostPkg] : hostPkgCandidates()
+  for (const candidate of candidates) {
+    try {
+      return createRequire(candidate).resolve(`@deepseek-ai/${specifier}`)
+    } catch (error) {
+      tried.push(`${candidate} (${error?.code ?? error?.message ?? 'error'})`)
+    }
+  }
+  throw new Error(
+    `mcp-lazy: cannot locate @deepseek-ai/${specifier} from any DSH installation.\n` +
+    `  tried:\n${tried.map((t) => `    - ${t}`).join('\n')}\n` +
+    '  fix: set DSH_HOST_PKG to the DSH install\'s package.json, or install DSH so ' +
+    'that @deepseek-ai/* sits under <node>/lib/node_modules.',
+  )
 }
 
 /**

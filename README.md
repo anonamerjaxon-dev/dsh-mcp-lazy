@@ -1,7 +1,46 @@
-# dsh-mcp-lazy
+# dsh-lazy-mcp
 
 Start an MCP server when a session first needs it, and release it after a real
 idle period — instead of mounting every preset's servers at profile boot.
+
+## Install
+
+```sh
+npm install dsh-lazy-mcp
+```
+
+Or into a DSH profile:
+
+```sh
+dsh plugin --profile web add dsh-lazy-mcp
+```
+
+The package ships a bundle patch, so the `mcp-lazy` row mounts on install. Then
+disable the preset row it is taking over (`mcp-<serverName>`) and name that same
+server under `servers:` in [Config](#config). Two mounts of one `serverName`
+start it twice — see the note there.
+
+Requires DSH `>=0.2.1-rc.2 <0.3.0` and Node `>=22`, declared in `engines.dsh` and
+`engines.node`. DSH checks those two fields and nothing else.
+
+## The portable half: `audit`
+
+The plugin only runs inside DSH. The audit does not — it is the same diagnosis
+for whatever agent you use:
+
+```sh
+npx dsh-lazy-mcp audit          # read every agent's MCP config, match running processes
+npx dsh-lazy-mcp audit --json   # machine-readable
+npx dsh-lazy-mcp audit --cwd .  # scan a project's .mcp.json / .cursor / .vscode
+```
+
+It reads Claude Code (`~/.claude.json`, `.mcp.json`), Cursor (`~/.cursor/mcp.json`),
+VS Code (`.vscode/mcp.json`) and every DSH profile, then matches each declared
+server against the process table and sums **the whole process subtree** — a
+`blender-mcp` launcher is 2 MB, the Blender it starts is not. Servers already
+handed over to a lazy row are reported as gated rather than re-suggested.
+
+Read-only by construction: no writes, no installs, no network.
 
 ## The problem
 
@@ -56,7 +95,7 @@ for a big memory win. Saying otherwise would oversell it.
 ```yaml
 - insert:
     - id: mcp-lazy
-      name: 'dsh-mcp-lazy'
+      name: 'dsh-lazy-mcp'
       config:
         idleMs: 600000      # grace period before release
         sweepMs: 60000      # how often the idle check runs
@@ -64,7 +103,7 @@ for a big memory win. Saying otherwise would oversell it.
           - serverName: genoffice
             allowPresets: [office]   # only these presets may trigger it
             transport: stdio
-            command: /Users/jackson/.local/bin/genoffice
+            command: genoffice      # resolved on PATH
             args: [mcp]
             toolCallTimeoutMs: 180000
             failOnStartupError: false

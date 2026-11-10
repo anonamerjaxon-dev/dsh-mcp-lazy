@@ -1,4 +1,4 @@
-# dsh-mcp-lazy bundle patch.
+# dsh-lazy-mcp bundle patch.
 #
 # One host row, no tools of its own. It takes over an MCP server that would
 # otherwise mount at profile boot: the owning preset's `mcp-<name>` row must be
@@ -14,7 +14,7 @@
 # running turn and no status change for this long.
 - insert:
     - id: mcp-lazy
-      name: 'dsh-mcp-lazy'
+      name: 'dsh-lazy-mcp'
       config:
         idleMs: 600000      # 10 minutes of true inactivity before release
         sweepMs: 60000      # how often the idle check runs
@@ -28,11 +28,15 @@
           # this ~150 MB GUI app and left it running. Same waste the plugin exists
           # to remove, just deferred to the first message. Only the presets that
           # actually compile this server in may open it.
+          # `command` is a bare name, resolved on PATH (~/.local/bin is on the
+          # running server's PATH). An absolute path here would ship a config
+          # that works on exactly one machine — the defect this package's audit
+          # now rejects.
           - serverName: genoffice
             allowPresets:
               - office
             transport: stdio
-            command: /Users/jackson/.local/bin/genoffice
+            command: genoffice
             args:
               - mcp
             toolCallTimeoutMs: 180000

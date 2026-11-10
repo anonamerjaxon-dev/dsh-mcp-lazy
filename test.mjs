@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Offline checks for dsh-mcp-lazy.
+ * Offline checks for dsh-lazy-mcp.
  *
  * The whole safety argument is in `createServerController`, which takes an
  * injected clock and has no timers of its own — so every timing rule is testable

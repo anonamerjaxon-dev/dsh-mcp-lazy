@@ -1,19 +1,60 @@
 {
-  "name": "dsh-mcp-lazy",
+  "name": "dsh-lazy-mcp",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "description": "Start an MCP server when a session first needs it and release it after a real idle period, instead of mounting every preset's servers at profile boot.",
+  "bin": {
+    "dsh-lazy-mcp": "./bin/cli.mjs"
+  },
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
-  "keywords": ["dsh", "dsh-plugin", "mcp", "lazy", "memory"],
-  "engines": { "node": ">=22" },
+  "files": [
+    "index.js",
+    "bin",
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "mcp",
+    "lazy",
+    "memory",
+    "deepseek-harness"
+  ],
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
-    "compatibility": { "dshReleases": { "0.2.1-rc.4": "compatible" }, "node": ">=22" }
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node test.mjs && node test-audit.mjs",
+    "audit": "node scripts/audit.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "check": "node scripts/audit.mjs && node test.mjs && node scripts/smoke.mjs",
+    "agensi:build": "node agensi/build.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anonamerjaxon-dev/dsh-mcp-lazy.git"
+  },
+  "homepage": "https://github.com/anonamerjaxon-dev/dsh-mcp-lazy#readme",
+  "bugs": {
+    "url": "https://github.com/anonamerjaxon-dev/dsh-mcp-lazy/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "license": "MIT"
 }
