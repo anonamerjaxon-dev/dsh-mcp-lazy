@@ -41,7 +41,7 @@
     "test": "node test.mjs && node test-audit.mjs",
     "audit": "node scripts/audit.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "check": "node scripts/audit.mjs && node test.mjs && node scripts/smoke.mjs",
+    "check": "node scripts/audit.mjs && node test.mjs && node test-audit.mjs && node scripts/smoke.mjs",
     "agensi:build": "node agensi/build.mjs"
   },
   "repository": {
